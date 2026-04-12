@@ -1,0 +1,26 @@
+export type QrPayload = {
+  text: string
+  format: string
+  timestamp: number
+}
+
+export type ErrorCallback = (message: string) => void
+export type QrCallback = (payload: QrPayload) => void
+
+export interface QrFloatLogin {
+  checkOverlayPermission(): boolean
+  requestOverlayPermission(): Promise<boolean>
+  hasScreenCapturePermission(): boolean
+  requestScreenCapturePermission(): Promise<boolean>
+  startFloatWindow(): Promise<boolean>
+  stopFloatWindow(): Promise<void>
+  captureAndDecodeOnce(): Promise<QrPayload | null>
+  getLatestResult(): QrPayload | null
+  getLatestStatusMessage(): string
+  getLatestCapturePath(): string
+  clearLatestResult(): void
+  onQrDetected(callback: QrCallback): void
+  offQrDetected(callback: QrCallback): void
+  onError(callback: ErrorCallback): void
+  offError(callback: ErrorCallback): void
+}

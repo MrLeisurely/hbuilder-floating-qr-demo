@@ -1,0 +1,32 @@
+{
+    "name" : "悬浮扫码 Demo",
+    "appid" : "__UNI__84602C1",
+    "description" : "演示 Android 悬浮窗 + 截屏二维码识别",
+    "versionName" : "1.0.0",
+    "versionCode" : "100",
+    "transformPx" : false,
+    "app-plus" : {
+        "usingComponents" : true,
+        "nvueCompiler" : "uni-app",
+        "splashscreen" : {
+            "alwaysShowBeforeRender" : true,
+            "waiting" : true,
+            "autoclose" : true,
+            "delay" : 0
+        },
+        "modules" : {},
+        "distribute" : {
+            "android" : {
+                "permissions" : [
+                    "<uses-permission android:name=\"android.permission.SYSTEM_ALERT_WINDOW\"/>",
+                    "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE\"/>",
+                    "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION\"/>",
+                    "<uses-permission android:name=\"android.permission.POST_NOTIFICATIONS\"/>"
+                ]
+            },
+            "ios" : {
+                "dSYMs" : false
+            }
+        }
+    }
+}

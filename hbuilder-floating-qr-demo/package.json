@@ -1,0 +1,8 @@
+{
+  "name": "hbuilder-floating-qr-demo",
+  "version": "1.0.0",
+  "description": "uni-app + UTS Android demo for overlay QR capture",
+  "scripts": {
+    "dev:app": "请使用 HBuilderX 运行到 Android 自定义基座"
+  }
+}

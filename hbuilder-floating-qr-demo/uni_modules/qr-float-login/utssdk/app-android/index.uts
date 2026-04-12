@@ -1,0 +1,237 @@
+import Activity from 'android.app.Activity'
+import Intent from 'android.content.Intent'
+import Settings from 'android.provider.Settings'
+import Uri from 'android.net.Uri'
+import { UTSAndroid } from 'io.dcloud.uts'
+import { QrFloatNative } from 'uts.qrfloatlogin.android'
+import { QrPayload, ErrorCallback, QrCallback } from '../interface.uts'
+
+const qrCallbacks: QrCallback[] = []
+const errorCallbacks: ErrorCallback[] = []
+
+let bridgeRegistered = false
+let activityResultRegistered = false
+let activityResumeRegistered = false
+let pendingRequestCode: Int = -1
+let pendingActivityResolver: (resultCode: Int, data: Intent | null) => boolean = (_resultCode: Int, _data: Intent | null): boolean => {
+  return false
+}
+let pendingActivityResolve: (value: boolean) => void = (_value: boolean): void => {}
+let overlayActivity: Activity | null = null
+let pendingOverlayResolve: (value: boolean) => void = (_value: boolean): void => {}
+
+function getActivity(): Activity {
+  const activity = UTSAndroid.getUniActivity()
+  if (activity == null) {
+    throw new Error('当前没有可用的 Activity')
+  }
+  return activity
+}
+
+function emitQr(payload: QrPayload) {
+  qrCallbacks.forEach((callback) => {
+    callback(payload)
+  })
+}
+
+function emitError(message: string) {
+  errorCallbacks.forEach((callback) => {
+    callback(message)
+  })
+}
+
+function handleGlobalActivityResult(code: Int, resultCode: Int, data: Intent | null) {
+  if (code != pendingRequestCode) {
+    return
+  }
+  const resolved = pendingActivityResolver(resultCode, data)
+  pendingRequestCode = -1
+  pendingActivityResolver = (_resultCode: Int, _data: Intent | null): boolean => {
+    return false
+  }
+  pendingActivityResolve(resolved)
+  pendingActivityResolve = (_value: boolean): void => {}
+}
+
+function handleGlobalActivityResume() {
+  if (overlayActivity == null) {
+    return
+  }
+  const granted = Settings.canDrawOverlays(overlayActivity)
+  overlayActivity = null
+  pendingOverlayResolve(granted)
+  pendingOverlayResolve = (_value: boolean): void => {}
+}
+
+function ensureBridge() {
+  if (bridgeRegistered) {
+    return
+  }
+  QrFloatNative.registerEventBridge(
+    (text: string, format: string) => {
+      emitQr({
+        text,
+        format,
+        timestamp: Date.now()
+      })
+    },
+    (message: string) => {
+      emitError(message)
+    }
+  )
+  bridgeRegistered = true
+}
+
+function waitForActivityResult(requestCode: Int, resolver: (resultCode: Int, data: Intent | null) => boolean) : Promise<boolean> {
+  return new Promise((resolve) => {
+    if (!activityResultRegistered) {
+      UTSAndroid.onAppActivityResult((code: Int, resultCode: Int, data: Intent | null) => {
+        handleGlobalActivityResult(code, resultCode, data)
+      })
+      activityResultRegistered = true
+    }
+    pendingRequestCode = requestCode
+    pendingActivityResolver = resolver
+    pendingActivityResolve = resolve
+  })
+}
+
+export function checkOverlayPermission(): boolean {
+  const activity = getActivity()
+  return Settings.canDrawOverlays(activity)
+}
+
+export function requestOverlayPermission(): Promise<boolean> {
+  const activity = getActivity()
+  if (Settings.canDrawOverlays(activity)) {
+    return Promise.resolve(true)
+  }
+
+  const intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse('package:' + activity.getPackageName()))
+
+  return new Promise((resolve) => {
+    if (!activityResumeRegistered) {
+      UTSAndroid.onAppActivityResume(() => {
+        handleGlobalActivityResume()
+      })
+      activityResumeRegistered = true
+    }
+    overlayActivity = activity
+    pendingOverlayResolve = resolve
+    activity.startActivity(intent)
+  })
+}
+
+export function hasScreenCapturePermission(): boolean {
+  return QrFloatNative.hasProjectionPermission()
+}
+
+export function requestScreenCapturePermission(): Promise<boolean> {
+  const activity = getActivity()
+  ensureBridge()
+  QrFloatNative.invalidateProjectionPermission()
+  const requestCode = QrFloatNative.REQUEST_MEDIA_PROJECTION
+  const intent = QrFloatNative.createProjectionIntent(activity)
+  activity.startActivityForResult(intent, requestCode)
+
+  return waitForActivityResult(requestCode, (resultCode, data) => {
+    return QrFloatNative.handleProjectionResult(activity, resultCode, data)
+  })
+}
+
+export function startFloatWindow(): Promise<boolean> {
+  const activity = getActivity()
+  ensureBridge()
+  if (!Settings.canDrawOverlays(activity)) {
+    emitError('请先授予悬浮窗权限')
+    return Promise.resolve(false)
+  }
+  if (!QrFloatNative.hasProjectionPermission()) {
+    emitError('请先重新授予截屏权限')
+    return Promise.resolve(false)
+  }
+  return Promise.resolve(QrFloatNative.startFloatService(activity))
+}
+
+export function stopFloatWindow(): Promise<void> {
+  const activity = getActivity()
+  QrFloatNative.stopFloatService(activity)
+  return Promise.resolve()
+}
+
+export function captureAndDecodeOnce(): Promise<QrPayload | null> {
+  const activity = getActivity()
+  ensureBridge()
+  if (!QrFloatNative.hasProjectionPermission()) {
+    return new Promise((resolve, reject) => {
+      reject({
+        message: '当前截屏授权已失效，请重新点击“申请截屏权限”'
+      })
+    })
+  }
+  return new Promise((resolve, reject) => {
+    QrFloatNative.captureAndDecodeOnce(activity, (text: string | null) => {
+      if (text == null || text.length == 0) {
+        resolve(null)
+        return
+      }
+      resolve({
+        text,
+        format: 'QR_CODE',
+        timestamp: Date.now()
+      })
+    }, (message: string) => {
+      reject({
+        message
+      })
+    })
+  })
+}
+
+export function getLatestResult(): QrPayload | null {
+  const text = QrFloatNative.getLatestResultText()
+  if (text == null || text.length == 0) {
+    return null
+  }
+  return {
+    text,
+    format: QrFloatNative.getLatestResultFormat(),
+    timestamp: Date.now()
+  }
+}
+
+export function clearLatestResult(): void {
+  QrFloatNative.clearLatestResult()
+}
+
+export function getLatestStatusMessage(): string {
+  return QrFloatNative.getLatestStatusMessage()
+}
+
+export function getLatestCapturePath(): string {
+  return QrFloatNative.getLatestCapturePath()
+}
+
+export function onQrDetected(callback: QrCallback): void {
+  ensureBridge()
+  qrCallbacks.push(callback)
+}
+
+export function offQrDetected(callback: QrCallback): void {
+  const index = qrCallbacks.indexOf(callback)
+  if (index >= 0) {
+    qrCallbacks.splice(index, 1)
+  }
+}
+
+export function onError(callback: ErrorCallback): void {
+  ensureBridge()
+  errorCallbacks.push(callback)
+}
+
+export function offError(callback: ErrorCallback): void {
+  const index = errorCallbacks.indexOf(callback)
+  if (index >= 0) {
+    errorCallbacks.splice(index, 1)
+  }
+}

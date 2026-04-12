@@ -1,0 +1,15 @@
+{
+  "id": "qr-float-login",
+  "name": "qr-float-login",
+  "displayName": "二维码悬浮登录插件",
+  "version": "1.0.0",
+  "description": "UTS Android plugin for overlay QR capture",
+  "keywords": [
+    "uni-app",
+    "uts",
+    "android",
+    "overlay",
+    "mediaprojection",
+    "qrcode"
+  ]
+}
