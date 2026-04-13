@@ -13,12 +13,17 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
+import android.text.TextUtils
 import android.util.Log
 import android.util.TypedValue
+import android.view.ViewGroup
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.Button
+import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 
@@ -32,8 +37,14 @@ class FloatWindowService : Service() {
         private const val TAG = "QrFloatWindowService"
     }
 
+    private enum class PanelState {
+        CONFIRM_LOGOUT,
+        READY_TO_LOGIN
+    }
+
     private var windowManager: WindowManager? = null
     private var floatView: View? = null
+    private var currentState: PanelState = PanelState.CONFIRM_LOGOUT
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -45,6 +56,7 @@ class FloatWindowService : Service() {
                 return START_NOT_STICKY
             }
             else -> {
+                currentState = PanelState.CONFIRM_LOGOUT
                 QrFloatNative.notifyStatus("悬浮窗服务已进入 onStartCommand")
                 startForeground(NOTIFICATION_ID, buildNotification())
                 showFloatWindow()
@@ -103,8 +115,8 @@ class FloatWindowService : Service() {
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         val params = WindowManager.LayoutParams().apply {
-            width = dp(72)
-            height = dp(72)
+            width = WindowManager.LayoutParams.WRAP_CONTENT
+            height = WindowManager.LayoutParams.WRAP_CONTENT
             type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
@@ -115,40 +127,198 @@ class FloatWindowService : Service() {
             y = dp(180)
         }
 
-        val floatButton = TextView(this).apply {
-            text = "扫"
-            gravity = Gravity.CENTER
-            setTextColor(0xFFFFFFFF.toInt())
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
-            typeface = Typeface.DEFAULT_BOLD
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(0xE62F7D57.toInt())
-                setStroke(dp(2), 0xFFF6E7C2.toInt())
-            }
+        val rootLayout = FrameLayout(this).apply {
             elevation = dp(8).toFloat()
         }
 
-        floatButton.setOnClickListener {
-            QrFloatNative.captureAndDecodeOnce(
-                context = this,
-                onSuccess = { text ->
-                    if (text.isNullOrBlank()) {
-                        QrFloatNative.notifyError("未识别到二维码")
-                    } else {
-                        QrFloatNative.notifyDetected(text)
+        fun renderState() {
+            rootLayout.removeAllViews()
+            when (currentState) {
+                PanelState.CONFIRM_LOGOUT -> {
+                    val bar = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(dp(10), dp(10), dp(10), dp(10))
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(8).toFloat()
+                            setColor(0xFF4A4A4A.toInt())
+                        }
                     }
-                },
-                onError = { message ->
-                    QrFloatNative.notifyError(message)
+
+                    val exitButton = Button(this).apply {
+                        text = "退出"
+                        setTextColor(0xFFFFFFFF.toInt())
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                        typeface = Typeface.DEFAULT_BOLD
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(4).toFloat()
+                            setColor(0xFFAA6B1C.toInt())
+                        }
+                        setPadding(dp(14), dp(8), dp(14), dp(8))
+                        setOnClickListener {
+                            stopSelf()
+                        }
+                    }
+
+                    val tips = TextView(this).apply {
+                        text = "如果游戏是已经登录状态？请点击右上角退出登录"
+                        setTextColor(0xFFEFEFEF.toInt())
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                        setLineSpacing(dp(2).toFloat(), 1f)
+                        setPadding(dp(10), 0, dp(10), 0)
+                    }
+
+                    val confirmButton = Button(this).apply {
+                        text = "确认已退出个人账号"
+                        setTextColor(0xFFFFFFFF.toInt())
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                        typeface = Typeface.DEFAULT_BOLD
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(6).toFloat()
+                            setColor(0xFFFFB24B.toInt())
+                        }
+                        setPadding(dp(14), dp(10), dp(14), dp(10))
+                        setOnClickListener {
+                            currentState = PanelState.READY_TO_LOGIN
+                            renderState()
+                            QrFloatNative.notifyStatus("已切换到上号准备状态")
+                        }
+                    }
+
+                    bar.addView(exitButton, LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ))
+                    bar.addView(tips, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                    bar.addView(confirmButton, LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ))
+                    rootLayout.addView(bar, FrameLayout.LayoutParams(dp(340), ViewGroup.LayoutParams.WRAP_CONTENT))
                 }
-            )
+
+                PanelState.READY_TO_LOGIN -> {
+                    val card = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(dp(10), dp(10), dp(10), dp(10))
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(6).toFloat()
+                            setColor(0xFFFFFFFF.toInt())
+                        }
+                    }
+
+                    val closeRow = LinearLayout(this).apply {
+                        gravity = Gravity.END
+                    }
+
+                    val closeButton = TextView(this).apply {
+                        text = "×"
+                        gravity = Gravity.CENTER
+                        setTextColor(0xFFFFFFFF.toInt())
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(0xFFC9C9C9.toInt())
+                        }
+                        setPadding(dp(6), dp(2), dp(6), dp(2))
+                        setOnClickListener {
+                            stopSelf()
+                        }
+                    }
+                    closeRow.addView(closeButton)
+
+                    val loginButton = Button(this).apply {
+                        text = "⚡ 点我上号"
+                        setTextColor(0xFFFFFFFF.toInt())
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                        typeface = Typeface.DEFAULT_BOLD
+                        isAllCaps = false
+                        setSingleLine(true)
+                        ellipsize = TextUtils.TruncateAt.END
+                        minHeight = dp(42)
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(4).toFloat()
+                            setColor(0xFFFFB24B.toInt())
+                        }
+                        setPadding(dp(14), dp(10), dp(14), dp(10))
+                        setOnClickListener {
+                            QrFloatNative.captureAndDecodeOnce(
+                                context = this@FloatWindowService,
+                                onSuccess = { text ->
+                                    if (text.isNullOrBlank()) {
+                                        QrFloatNative.notifyError("未识别到二维码")
+                                    } else {
+                                        QrFloatNative.notifyDetected(text)
+                                    }
+                                },
+                                onError = { message ->
+                                    QrFloatNative.notifyError(message)
+                                }
+                            )
+                        }
+                    }
+
+                    val hintRow = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER
+                        setPadding(dp(8), dp(8), dp(8), dp(8))
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(4).toFloat()
+                            setColor(0xFFB8B8B8.toInt())
+                        }
+                    }
+
+                    val hintPrefix = TextView(this).apply {
+                        text = "打开QQ扫码授权页 | "
+                        setTextColor(0xFFF4F4F4.toInt())
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                        setSingleLine(true)
+                        ellipsize = TextUtils.TruncateAt.END
+                    }
+
+                    val hintAction = TextView(this).apply {
+                        text = "扫码"
+                        setTextColor(0xFF2D8CFF.toInt())
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                        setSingleLine(true)
+                        ellipsize = TextUtils.TruncateAt.END
+                        typeface = Typeface.DEFAULT_BOLD
+                    }
+
+                    hintRow.addView(hintPrefix, LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ))
+                    hintRow.addView(hintAction, LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ))
+
+                    card.addView(closeRow)
+                    card.addView(loginButton, LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        topMargin = dp(6)
+                    })
+                    card.addView(hintRow, LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        topMargin = dp(8)
+                    })
+
+                    rootLayout.addView(card, FrameLayout.LayoutParams(dp(176), ViewGroup.LayoutParams.WRAP_CONTENT))
+                }
+            }
         }
 
-        floatButton.setOnTouchListener(createDragListener(params))
-        floatView = floatButton
+        renderState()
+
+        rootLayout.setOnTouchListener(createDragListener(params))
+        floatView = rootLayout
         try {
-            windowManager?.addView(floatButton, params)
+            windowManager?.addView(rootLayout, params)
             Log.d(TAG, "float window added")
             QrFloatNative.notifyStatus("悬浮窗已显示")
         } catch (t: Throwable) {
