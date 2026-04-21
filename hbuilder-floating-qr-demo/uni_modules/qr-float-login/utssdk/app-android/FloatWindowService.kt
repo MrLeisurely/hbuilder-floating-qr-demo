@@ -11,7 +11,9 @@ import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.Settings
 import android.text.TextUtils
 import android.util.Log
@@ -45,6 +47,8 @@ class FloatWindowService : Service() {
     private var windowManager: WindowManager? = null
     private var floatView: View? = null
     private var currentState: PanelState = PanelState.CONFIRM_LOGOUT
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var captureInProgress = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -242,19 +246,7 @@ class FloatWindowService : Service() {
                         }
                         setPadding(dp(14), dp(10), dp(14), dp(10))
                         setOnClickListener {
-                            QrFloatNative.captureAndDecodeOnce(
-                                context = this@FloatWindowService,
-                                onSuccess = { text ->
-                                    if (text.isNullOrBlank()) {
-                                        QrFloatNative.notifyError("未识别到二维码")
-                                    } else {
-                                        QrFloatNative.notifyDetected(text)
-                                    }
-                                },
-                                onError = { message ->
-                                    QrFloatNative.notifyError(message)
-                                }
-                            )
+                            triggerCaptureWithHiddenOverlay()
                         }
                     }
 
@@ -354,6 +346,48 @@ class FloatWindowService : Service() {
                 }
                 return false
             }
+        }
+    }
+
+    private fun triggerCaptureWithHiddenOverlay() {
+        if (captureInProgress) {
+            QrFloatNative.notifyStatus("正在截图识别，请稍候")
+            return
+        }
+        captureInProgress = true
+        setFloatWindowVisible(false)
+        QrFloatNative.notifyStatus("悬浮窗已隐藏，准备截图")
+        mainHandler.postDelayed({
+            QrFloatNative.captureAndDecodeOnce(
+                context = this@FloatWindowService,
+                onSuccess = { text ->
+                    restoreFloatWindowAfterCapture()
+                    if (text.isNullOrBlank()) {
+                        QrFloatNative.notifyError("未识别到二维码")
+                    } else {
+                        QrFloatNative.notifyDetected(text)
+                    }
+                },
+                onError = { message ->
+                    restoreFloatWindowAfterCapture()
+                    QrFloatNative.notifyError(message)
+                }
+            )
+        }, 220)
+    }
+
+    private fun restoreFloatWindowAfterCapture() {
+        captureInProgress = false
+        setFloatWindowVisible(true)
+        QrFloatNative.notifyStatus("悬浮窗已恢复显示")
+    }
+
+    private fun setFloatWindowVisible(visible: Boolean) {
+        val view = floatView ?: return
+        view.visibility = if (visible) View.VISIBLE else View.INVISIBLE
+        try {
+            windowManager?.updateViewLayout(view, view.layoutParams as WindowManager.LayoutParams)
+        } catch (_: Throwable) {
         }
     }
 

@@ -7,3 +7,7 @@ Android UTS 插件示例，封装以下能力：
 - 悬浮球启动和关闭
 - 截图二维码识别
 - 识别结果事件回传
+
+简易接入文档见：
+
+- [INTEGRATION.md](/Users/hans/Documents/Playground/hbuilder-floating-qr-demo/uni_modules/qr-float-login/INTEGRATION.md)
