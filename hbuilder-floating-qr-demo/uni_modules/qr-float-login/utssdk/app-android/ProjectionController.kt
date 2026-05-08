@@ -18,11 +18,15 @@ import java.io.File
 import java.io.FileOutputStream
 
 object ProjectionController {
+    private const val MAX_ACQUIRE_RETRY_COUNT = 8
+    private const val ACQUIRE_RETRY_DELAY_MS = 120L
+
     private var mediaProjection: MediaProjection? = null
     private var projectionManager: MediaProjectionManager? = null
     private var imageReader: ImageReader? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var displayMetrics: DisplayMetrics? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     fun createProjectionIntent(activity: android.app.Activity): Intent {
         val manager = activity.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -77,9 +81,46 @@ object ProjectionController {
             return
         }
 
+        captureAndDecodeInternal(context, reader, metrics, onSuccess, onError, 0)
+    }
+
+    fun release() {
+        imageReader?.close()
+        imageReader = null
+        virtualDisplay?.release()
+        virtualDisplay = null
+        mediaProjection?.stop()
+        mediaProjection = null
+        projectionManager = null
+        displayMetrics = null
+    }
+
+    private fun buildCenterRect(width: Int, height: Int): Rect {
+        val rectWidth = (width * 0.7f).toInt()
+        val rectHeight = (height * 0.55f).toInt()
+        val left = ((width - rectWidth) / 2).coerceAtLeast(0)
+        val top = ((height - rectHeight) / 2).coerceAtLeast(0)
+        return Rect(left, top, left + rectWidth, top + rectHeight)
+    }
+
+    private fun captureAndDecodeInternal(
+        context: Context,
+        reader: ImageReader,
+        metrics: DisplayMetrics,
+        onSuccess: (String?) -> Unit,
+        onError: (String) -> Unit,
+        retryCount: Int
+    ) {
         try {
-            val image = reader.acquireLatestImage() ?: run {
-                onError("当前还没有可用画面，请等待 1 秒后再试")
+            val image = reader.acquireLatestImage()
+            if (image == null) {
+                if (retryCount >= MAX_ACQUIRE_RETRY_COUNT) {
+                    onError("当前还没有可用画面，请稍后再试")
+                    return
+                }
+                mainHandler.postDelayed({
+                    captureAndDecodeInternal(context, reader, metrics, onSuccess, onError, retryCount + 1)
+                }, ACQUIRE_RETRY_DELAY_MS)
                 return
             }
             image.use {
@@ -141,25 +182,6 @@ object ProjectionController {
         } catch (t: Throwable) {
             onError(t.message ?: "截屏解析失败")
         }
-    }
-
-    fun release() {
-        imageReader?.close()
-        imageReader = null
-        virtualDisplay?.release()
-        virtualDisplay = null
-        mediaProjection?.stop()
-        mediaProjection = null
-        projectionManager = null
-        displayMetrics = null
-    }
-
-    private fun buildCenterRect(width: Int, height: Int): Rect {
-        val rectWidth = (width * 0.7f).toInt()
-        val rectHeight = (height * 0.55f).toInt()
-        val left = ((width - rectWidth) / 2).coerceAtLeast(0)
-        val top = ((height - rectHeight) / 2).coerceAtLeast(0)
-        return Rect(left, top, left + rectWidth, top + rectHeight)
     }
 
     private fun saveCaptureBitmap(context: Context, bitmap: Bitmap): String {

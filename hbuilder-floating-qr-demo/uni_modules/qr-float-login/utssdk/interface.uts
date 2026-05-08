@@ -12,6 +12,9 @@ export interface QrFloatLogin {
   requestOverlayPermission(): Promise<boolean>
   hasScreenCapturePermission(): boolean
   requestScreenCapturePermission(): Promise<boolean>
+  prepareFloatWindow(): Promise<boolean>
+  prepareAndStartFloatWindow(): Promise<boolean>
+  restartFloatWindowSession(): Promise<boolean>
   startFloatWindow(): Promise<boolean>
   stopFloatWindow(): Promise<void>
   captureAndDecodeOnce(): Promise<QrPayload | null>

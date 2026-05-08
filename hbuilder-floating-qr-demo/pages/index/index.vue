@@ -4,14 +4,13 @@
       <text class="eyebrow">Android / HBuilderX</text>
       <text class="title">跨应用二维码截图登录 Demo</text>
       <text class="desc">
-        先授权悬浮窗和截屏，再启动悬浮球。授权完成后会建立持续截屏会话，之后在其他 App 点击悬浮窗即可直接识别。
+        先点击“检查权限”完成悬浮窗权限和截屏会话准备，再点击“立即上号”启动悬浮窗。
       </text>
     </view>
 
     <view class="card">
-      <button class="action" @click="requestOverlay">申请悬浮窗权限</button>
-      <button class="action" @click="requestCapture">申请截屏权限</button>
-      <button class="action primary" @click="startFloat">启动悬浮窗</button>
+      <button class="action" @click="prepareFloat">检查权限</button>
+      <button class="action primary" @click="startFloat">立即上号</button>
       <button class="action" @click="stopFloat">关闭悬浮窗</button>
       <button class="action ghost" @click="decodeOnce">在当前 App 内测试识别一次</button>
     </view>
@@ -121,30 +120,17 @@ export default {
         console.error('syncLatestResult error', error)
       }
     },
-    async requestOverlay() {
+    async prepareFloat() {
       if (!this.qrFloatLogin) {
         this.statusText = '插件未加载'
         return
       }
       try {
-        const granted = await this.qrFloatLogin.requestOverlayPermission()
-        this.statusText = granted ? '悬浮窗权限已授予' : '悬浮窗权限未授予'
+        const prepared = await this.qrFloatLogin.prepareFloatWindow()
+        this.statusText = prepared ? '权限与截屏会话已准备完成' : '权限准备失败'
       } catch (error) {
-        this.statusText = '申请悬浮窗权限失败'
-        console.error('requestOverlay error', error)
-      }
-    },
-    async requestCapture() {
-      if (!this.qrFloatLogin) {
-        this.statusText = '插件未加载'
-        return
-      }
-      try {
-        const granted = await this.qrFloatLogin.requestScreenCapturePermission()
-        this.statusText = granted ? '截屏权限已授予' : '截屏权限未授予'
-      } catch (error) {
-        this.statusText = '申请截屏权限失败'
-        console.error('requestCapture error', error)
+        this.statusText = '权限准备失败'
+        console.error('prepareFloat error', error)
       }
     },
     async startFloat() {
@@ -154,7 +140,7 @@ export default {
       }
       try {
         const ok = await this.qrFloatLogin.startFloatWindow()
-        this.statusText = ok ? '悬浮窗启动请求已发送' : '悬浮窗启动失败'
+        this.statusText = ok ? '悬浮窗已启动' : '悬浮窗启动失败'
       } catch (error) {
         this.statusText = '启动悬浮窗失败'
         console.error('startFloat error', error)

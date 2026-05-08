@@ -109,6 +109,12 @@ export default {
 7. 插件截图并识别二维码
 8. 页面接收识别结果并处理登录逻辑
 
+如果希望减少业务侧时序问题，推荐直接使用聚合接口：
+
+1. `prepareFloatWindow()`
+2. `prepareAndStartFloatWindow()`
+3. `restartFloatWindowSession()`
+
 ## 6. 最小调用示例
 
 ```vue
@@ -142,6 +148,10 @@ export default {
       const granted = await this.qrFloatLogin.requestScreenCapturePermission()
       this.statusText = granted ? '截屏权限已授予' : '截屏权限未授予'
     },
+    async prepareAndStart() {
+      const ok = await this.qrFloatLogin.prepareAndStartFloatWindow()
+      this.statusText = ok ? '权限准备并启动成功' : '启动失败'
+    },
     async startFloat() {
       const ok = await this.qrFloatLogin.startFloatWindow()
       this.statusText = ok ? '悬浮窗已启动' : '悬浮窗启动失败'
@@ -170,6 +180,9 @@ export default {
 - `requestOverlayPermission(): Promise<boolean>`
 - `hasScreenCapturePermission(): boolean`
 - `requestScreenCapturePermission(): Promise<boolean>`
+- `prepareFloatWindow(): Promise<boolean>`
+- `prepareAndStartFloatWindow(): Promise<boolean>`
+- `restartFloatWindowSession(): Promise<boolean>`
 - `startFloatWindow(): Promise<boolean>`
 - `stopFloatWindow(): Promise<void>`
 - `captureAndDecodeOnce(): Promise<QrPayload | null>`
@@ -248,6 +261,15 @@ type QrPayload = {
 - `utils/qr-float-login.js`
 
 把插件调用、权限申请、错误提示、识别结果处理都集中管理，页面只保留业务逻辑。
+
+推荐对业务按钮这样分工：
+
+- `检查权限`：调用 `prepareFloatWindow()`
+- `立即上号`：调用 `startFloatWindow()`
+
+如果希望合并为一步：
+
+- `立即上号`：直接调用 `prepareAndStartFloatWindow()`
 
 ## 12. 当前 Demo 参考
 

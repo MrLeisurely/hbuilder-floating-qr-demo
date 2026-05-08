@@ -126,6 +126,66 @@ export function hasScreenCapturePermission(): boolean {
   return QrFloatNative.hasProjectionPermission()
 }
 
+export function prepareFloatWindow(): Promise<boolean> {
+  ensureBridge()
+  return new Promise((resolve, reject) => {
+    requestOverlayPermission().then((overlayGranted) => {
+      if (!overlayGranted) {
+        emitError('悬浮窗权限未授予')
+        resolve(false)
+        return
+      }
+      requestScreenCapturePermission().then((captureGranted) => {
+        if (!captureGranted) {
+          emitError('截屏权限未授予')
+          resolve(false)
+          return
+        }
+        QrFloatNative.notifyStatus('悬浮窗与截屏权限已准备完成')
+        resolve(true)
+      }).catch((error) => {
+        reject(error)
+      })
+    }).catch((error) => {
+      reject(error)
+    })
+  })
+}
+
+export function prepareAndStartFloatWindow(): Promise<boolean> {
+  ensureBridge()
+  return new Promise((resolve, reject) => {
+    prepareFloatWindow().then((prepared) => {
+      if (!prepared) {
+        resolve(false)
+        return
+      }
+      startFloatWindow().then((started) => {
+        resolve(started)
+      }).catch((error) => {
+        reject(error)
+      })
+    }).catch((error) => {
+      reject(error)
+    })
+  })
+}
+
+export function restartFloatWindowSession(): Promise<boolean> {
+  ensureBridge()
+  return new Promise((resolve, reject) => {
+    stopFloatWindow().then(() => {
+      prepareAndStartFloatWindow().then((started) => {
+        resolve(started)
+      }).catch((error) => {
+        reject(error)
+      })
+    }).catch((error) => {
+      reject(error)
+    })
+  })
+}
+
 export function requestScreenCapturePermission(): Promise<boolean> {
   const activity = getActivity()
   ensureBridge()
